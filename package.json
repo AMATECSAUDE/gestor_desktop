@@ -1,0 +1,23 @@
+{
+  "name": "gestor-desktop",
+  "productName": "Gestor",
+  "version": "1.0.0",
+  "description": "Gestor no desktop, com impressao direta do cupom na impressora do balcao",
+  "main": "src/main.js",
+  "author": "AMATEC Tecnologia em Saude LTDA",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --publish never",
+    "publicar": "electron-builder --win --publish always"
+  },
+  "devDependencies": {
+    "electron": "^34.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0",
+    "electron-updater": "^6.3.9"
+  }
+}

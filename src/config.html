@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Impressoras</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, Segoe UI, sans-serif; margin: 0; padding: 20px; color: #231F20; background: #fff; }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  p.ajuda { font-size: 12px; color: #666; margin: 0 0 16px; line-height: 1.4; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-size: 11px; text-transform: uppercase; color: #666; padding: 0 0 6px; }
+  td { padding: 5px 0; border-top: 1px solid #eee; vertical-align: middle; }
+  td.nome { padding-right: 10px; }
+  .padrao { font-size: 11px; color: #666; }
+  select { width: 100%; height: 30px; font-size: 13px; padding: 0 4px; }
+  .rodape { margin-top: 20px; display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
+  button { height: 34px; padding: 0 16px; font-size: 14px; cursor: pointer; border: 1px solid #ccc; background: #f5f5f5; }
+  button.ok { background: #219790; border-color: #219790; color: #fff; font-weight: 700; }
+  .aviso { margin-top: 14px; font-size: 12px; background: #FEF3C7; border: 1px solid #FDE68A; padding: 8px; line-height: 1.4; }
+  .salvo { font-size: 12px; color: #219790; font-weight: 700; margin-right: auto; }
+  .vazio { font-size: 13px; color: #666; padding: 16px 0; }
+</style>
+</head>
+<body>
+  <h1>Impressoras deste computador</h1>
+  <p class="ajuda">
+    Diga que tipo de papel está em cada impressora. O recibo e o orçamento vão para a
+    do <strong>cupom</strong>; relatórios vão para a de <strong>A4</strong>. Impressora
+    marcada como "Não usar" nunca recebe nada do Gestor.
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>Impressora</th><th style="width:200px;">Papel</th></tr>
+    </thead>
+    <tbody id="linhas"></tbody>
+  </table>
+  <div class="vazio" id="vazio" hidden>Nenhuma impressora encontrada neste computador.</div>
+
+  <div class="aviso">
+    Confira nas Preferências da impressora se o papel dela bate com o que você marcou
+    aqui. Muita Elgin vem de fábrica em 58mm e corta o cupom de 80mm.
+    As medidas de cada tipo ficam no Gestor, em <strong>Cadastros Gerais &gt; Impressão</strong>.
+  </div>
+
+  <div class="rodape">
+    <span id="salvo" class="salvo"></span>
+    <button onclick="window.close()">Fechar</button>
+    <button class="ok" id="salvar">Salvar</button>
+  </div>
+
+<script>
+  const ROTULOS = { cupom: 'Cupom (bobina)', a4: 'A4 (folha)' };
+  const linhas = document.getElementById('linhas');
+  const salvo = document.getElementById('salvo');
+
+  async function carregar() {
+    const { impressoras, papeis, tipos } = await window.alfaclubDesktop.listarImpressoras();
+    document.getElementById('vazio').hidden = impressoras.length > 0;
+
+    linhas.innerHTML = '';
+    impressoras.forEach((imp) => {
+      const tr = document.createElement('tr');
+
+      const tdNome = document.createElement('td');
+      tdNome.className = 'nome';
+      tdNome.textContent = imp.nome;
+      if (imp.padrao) {
+        const marca = document.createElement('div');
+        marca.className = 'padrao';
+        marca.textContent = 'padrão do Windows';
+        tdNome.append(marca);
+      }
+
+      const select = document.createElement('select');
+      select.dataset.impressora = imp.nome;
+      // "Não usar" é o estado inicial honesto: sem classificação o app cai na
+      // impressora padrão do Windows, que é o comportamento antigo.
+      select.append(new Option('Não usar', ''));
+      tipos.forEach((t) => select.append(new Option(ROTULOS[t] || t, t)));
+      select.value = papeis[imp.nome] || '';
+
+      const tdPapel = document.createElement('td');
+      tdPapel.append(select);
+      tr.append(tdNome, tdPapel);
+      linhas.append(tr);
+    });
+  }
+
+  document.getElementById('salvar').addEventListener('click', async () => {
+    const mapa = {};
+    linhas.querySelectorAll('select').forEach((s) => {
+      if (s.value) mapa[s.dataset.impressora] = s.value;
+    });
+    await window.alfaclubDesktop.salvarPapeis(mapa);
+    salvo.textContent = 'Salvo.';
+    setTimeout(() => { salvo.textContent = ''; }, 2500);
+  });
+
+  carregar();
+</script>
+</body>
+</html>

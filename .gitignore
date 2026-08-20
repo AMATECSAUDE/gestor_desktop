@@ -1,0 +1,40 @@
+# Dependencias
+node_modules/
+
+# Saida do electron-builder: instalador, win-unpacked e os builder-*.yml de
+# diagnostico. Artefato de build versionado ja quebrou deploy nesta casa (o
+# `git pull --ff-only` aborta) - e aqui sao dezenas de MB por release.
+dist/
+
+# Icone da janela e do .exe. E GERADO, nao e fonte:
+#   scripts/gerar-icone.ps1 -EstablishmentId N
+# Sem o parametro cai no branding global (marca do Clube). Como o icone muda por
+# estabelecimento, versionar um deles faria todo build sair com a marca errada
+# ate alguem lembrar de regerar. Build sem ele nao falha: o electron-builder cai
+# no icone padrao do Electron e avisa.
+build/*.ico
+
+# Publicacao no GitHub Releases (`npm run publicar`) le GH_TOKEN do ambiente.
+# Token de release publica instalador em nome da empresa - NUNCA versionar.
+.env
+.env.*
+!.env.example
+
+# Certificado de assinatura de codigo (o EV que tira o aviso do SmartScreen,
+# quando houver) - NUNCA versionar.
+*.pfx
+*.p12
+*.pem
+*.key
+
+# Logs de npm
+npm-debug.log*
+yarn-error.log*
+
+# Editor e sistema operacional
+.vscode/*
+!.vscode/extensions.json
+.idea
+Thumbs.db
+.DS_Store
+*.sw?

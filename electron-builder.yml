@@ -1,0 +1,43 @@
+appId: com.alfaclub.gestor
+# 🔴 `productName` define o NOME DO EXECUTAVEL, do instalador e da pasta em
+# Arquivos de Programas: sai "Gestor Setup X.Y.Z.exe" e "Gestor.exe".
+productName: Gestor
+copyright: AMATEC Tecnologia em Saude LTDA
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - src/**/*
+  - package.json
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  # Sem certificado de assinatura, o Windows SmartScreen avisa "editor
+  # desconhecido" na primeira execucao - o operador clica "Mais informacoes >
+  # Executar assim mesmo". Some quando houver certificado EV comprado.
+  icon: build/icon.ico
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Gestor
+  # Instalacao por USUARIO (perMachine false) nao pede senha de administrador -
+  # o operador do balcao instala sozinho.
+
+# Auto-update por GitHub Releases: o app checa ao abrir, baixa em segundo plano e
+# aplica ao fechar. E o que tira o custo de reinstalar maquina por maquina.
+#
+# 🔴 Publicar com `npm run publicar` e a variavel GH_TOKEN no ambiente. Release
+# PRIVADA exige token tambem no cliente - por isso o repo do instalador deve ser
+# publico OU trocar o provider por um servidor proprio (generic).
+publish:
+  provider: github
+  owner: SEU_USUARIO_OU_ORG
+  repo: alfaclub-gestor-desktop
