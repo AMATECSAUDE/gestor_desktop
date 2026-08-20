@@ -1,5 +1,5 @@
 appId: com.alfaclub.gestor
-# 🔴 `productName` define o NOME DO EXECUTAVEL, do instalador e da pasta em
+# CRITICO - `productName` define o NOME DO EXECUTAVEL, do instalador e da pasta em
 # Arquivos de Programas: sai "Gestor Setup X.Y.Z.exe" e "Gestor.exe".
 productName: Gestor
 copyright: AMATEC Tecnologia em Saude LTDA
@@ -11,6 +11,11 @@ directories:
 files:
   - src/**/*
   - package.json
+  # CRITICO - `build/` e `buildResources` (de onde sai o icone do .exe) e NAO vai pro
+  # pacote. O `marca.json` mora la porque e gerado junto do icone, mas o runtime
+  # le ele - sem esta linha o app instalado nao acha o arquivo e cai nas cores
+  # padrao, funcionando em `npm start` e falhando calado no instalador.
+  - build/marca.json
 
 win:
   target:
@@ -34,15 +39,19 @@ nsis:
 # Auto-update por GitHub Releases: o app checa ao abrir, baixa em segundo plano e
 # aplica ao fechar. E o que tira o custo de reinstalar maquina por maquina.
 #
-# 🔴 Publicar com `npm run publicar` e a variavel GH_TOKEN no ambiente. Release
+# CRITICO - Publicar com `npm run publicar` e a variavel GH_TOKEN no ambiente. Release
 # PRIVADA exige token tambem no cliente - por isso o repo do instalador deve ser
 # publico OU trocar o provider por um servidor proprio (generic).
 publish:
   provider: github
-  # 🔴 `owner` era o placeholder SEU_USUARIO_OU_ORG e `repo` apontava pra
+  # CRITICO - `owner` era um placeholder e `repo` apontava pra
   # `alfaclub-gestor-desktop`, que NAO existe - o repo real e `gestor_desktop`
   # (ver .git/config). Com isso o `npm run publicar` erra o destino e o
   # autoUpdater consulta releases de um repositorio inexistente: o app nunca
   # encontra atualizacao e nao reclama de nada.
   owner: AMATECSAUDE
   repo: gestor_desktop
+  # CRITICO - Sem isto o electron-builder cria a release como RASCUNHO (default do
+  # provider github). Rascunho nao aparece pro `autoUpdater`: publica, ninguem
+  # atualiza e nenhum erro aparece em lugar nenhum.
+  releaseType: release

@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Cabeçalho</title>
+<!-- Mesma Nunito dos fronts web (ver `amaclub_marketplace/index.html`). `display=swap`
+     pinta na fonte do sistema na hora e troca quando chegar - balcao sem internet
+     nao fica com o cabecalho em branco esperando. -->
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  body {
+    font-family: system-ui, Segoe UI, sans-serif;
+    display: flex; align-items: center; gap: 12px;
+    padding: 0 12px;
+    color: #1E293B;
+    /* Fundo BRANCO, igual ao `titleBarOverlay` do main - a marca fica so no nome
+       e nos controles, nao na faixa inteira. */
+    background: #fff;
+    border-bottom: 1px solid rgba(0,0,0,.08);
+    /* A faixa inteira ARRASTA a janela - é ela que substitui a barra de título
+       nativa. Botão e link voltam a ser clicáveis com `no-drag` (abaixo). */
+    -webkit-app-region: drag;
+    user-select: none;
+  }
+  .marca {
+    font-family: 'Nunito', system-ui, Segoe UI, sans-serif;
+    font-size: 14px; font-weight: 700; letter-spacing: -.2px;
+    white-space: nowrap; color: var(--marca, #1A5EA8);
+  }
+  .versao { font-size: 11px; color: #64748B; }
+  /* Empurra a barra de atualização pra longe do nome e a mantém longe dos botões
+     de janela (a reserva à direita vem do padding do #fim). */
+  .espaco { flex: 1; }
+
+  /* Barra de atualização: só aparece quando o main manda um estado. */
+  #atualizacao {
+    display: none; align-items: center; gap: 10px;
+    font-size: 12px; white-space: nowrap;
+    background: rgba(0,0,0,.05);
+    border-radius: 999px; padding: 4px 6px 4px 12px;
+    -webkit-app-region: no-drag;
+  }
+  #atualizacao.visivel { display: flex; }
+  #texto { font-weight: 600; }
+  /* Barra de progresso: `width` animada, sem dependência nenhuma. */
+  .trilho { width: 90px; height: 4px; border-radius: 999px; background: rgba(0,0,0,.10); overflow: hidden; }
+  .trilho > i { display: block; height: 100%; width: 0%; background: var(--marca, #1A5EA8); transition: width .2s linear; }
+  .trilho[hidden] { display: none; }
+  button {
+    -webkit-app-region: no-drag;
+    font: inherit; font-size: 12px; font-weight: 800;
+    border: 0; border-radius: 999px; padding: 5px 12px;
+    background: var(--marca, #1A5EA8); color: #fff;
+    cursor: pointer;
+  }
+  button:hover { opacity: .88; }
+  button[hidden] { display: none; }
+  /* Reserva pros botões minimizar/maximizar/fechar, que o Windows desenha POR CIMA
+     desta faixa (titleBarOverlay). Sem a reserva, a barra de atualização fica
+     debaixo do X. */
+  #fim { width: 140px; flex: none; }
+</style>
+</head>
+<body>
+  <span class="marca" id="nome">Gestor</span>
+  <span class="versao" id="versao"></span>
+
+  <span class="espaco"></span>
+
+  <div id="atualizacao">
+    <span id="texto"></span>
+    <span class="trilho" id="trilho" hidden><i id="preenche"></i></span>
+    <button id="acao" hidden></button>
+  </div>
+
+  <span id="fim"></span>
+
+<script>
+  const caixa = document.getElementById('atualizacao');
+  const texto = document.getElementById('texto');
+  const trilho = document.getElementById('trilho');
+  const preenche = document.getElementById('preenche');
+  const acao = document.getElementById('acao');
+
+  (async () => {
+    try {
+      const { nome, primaria } = await window.gestorCabecalho.marca();
+      document.getElementById('nome').textContent = nome;
+      if (primaria) document.documentElement.style.setProperty('--marca', primaria);
+    } catch { /* fica no fallback do CSS */ }
+    try {
+      document.getElementById('versao').textContent = 'v' + await window.gestorCabecalho.versao();
+    } catch { /* versão é enfeite */ }
+  })();
+
+  /**
+   * Estados que o main manda. A barra só existe quando há algo a dizer - app sem
+   * atualização pendente não mostra faixa nenhuma.
+   */
+  window.gestorCabecalho.aoAtualizar((e) => {
+    caixa.classList.add('visivel');
+    trilho.hidden = true;
+    acao.hidden = true;
+
+    if (e.estado === 'baixando') {
+      texto.textContent = 'Baixando atualização ' + (e.versao ? 'v' + e.versao : '') + '...';
+      trilho.hidden = false;
+      preenche.style.width = (e.pct ?? 0) + '%';
+      return;
+    }
+    if (e.estado === 'pronta') {
+      // CRITICO - NÃO reinicia sozinho: o operador pode estar no meio de uma venda.
+      // Quem escolhe a hora é ele.
+      texto.textContent = 'Atualização v' + e.versao + ' pronta.';
+      acao.textContent = 'Reiniciar agora';
+      acao.hidden = false;
+      acao.onclick = () => { acao.disabled = true; window.gestorCabecalho.instalar(); };
+      return;
+    }
+    if (e.estado === 'erro') {
+      texto.textContent = 'Não foi possível atualizar.';
+      acao.textContent = 'Tentar de novo';
+      acao.hidden = false;
+      acao.onclick = () => { caixa.classList.remove('visivel'); window.gestorCabecalho.procurar(); };
+      return;
+    }
+    // Estado desconhecido: some, em vez de mostrar faixa vazia.
+    caixa.classList.remove('visivel');
+  });
+</script>
+</body>
+</html>

@@ -1,29 +1,42 @@
-const { app, BrowserWindow, ipcMain, Menu, dialog, shell } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, Menu, dialog, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const Store = require('electron-store');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
 
-// Gestor no desktop.
-//
-// O app NAO reimplementa tela nenhuma: carrega o mesmo gestor web. A unica razao
-// dele existir e a IMPRESSAO SILENCIOSA do cupom - navegador nao imprime sem
-// perguntar, e o balcao imprime recibo a cada venda.
-//
-// 🔴 O site continua funcionando igual no navegador comum. A ponte
-// `window.alfaclubDesktop` (preload) so EXISTE aqui; o front testa a presenca dela
-// e cai no caminho do iframe quando roda no Chrome. Um codigo, dois destinos.
+// Carrega o mesmo gestor web numa janela. Existe pela IMPRESSAO SILENCIOSA do
+// cupom - navegador nao imprime sem perguntar. O front testa `window.alfaclubDesktop`
+// e cai no caminho do navegador quando ela nao existe.
 
 const { TIPOS, escolherImpressora, mapaEfetivo, sanitizar } = require('./papel');
 
-// `impressora` (string) e a config ANTIGA e continua no default so pra migracao -
-// ver `mapaEfetivo`. O que vale hoje e `papeisPorImpressora`: { nome: tipo }.
+// Cores assadas no build pelo `gerar-icone.ps1`. Buscar no boot atrasaria a janela
+// e quebraria offline. Sem o arquivo, cai nestes defaults.
+const MARCA_PADRAO = { nome: 'Gestor', primaria: '#1A5EA8', acento: '#1CB68A' };
+
+function lerMarca() {
+  try {
+    const bruto = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'build', 'marca.json'), 'utf8'));
+
+    // `||` e nao `??`: campo vazio no cadastro volta '' e passaria pelo `??`.
+    return {
+      nome: bruto.nome || MARCA_PADRAO.nome,
+      primaria: bruto.primaria || MARCA_PADRAO.primaria,
+      acento: bruto.acento || MARCA_PADRAO.acento,
+    };
+  } catch {
+    return MARCA_PADRAO;
+  }
+}
+
+const marca = lerMarca();
+
+// `impressora` (string) e config ANTIGA, mantida so pra migracao (`mapaEfetivo`).
 const store = new Store({
   defaults: { impressora: '', papeisPorImpressora: {}, url: 'https://gestor.alfaclubsaude.com.br' },
 });
 
-/** Mapa impressora -> tipo, ja com a migracao da config antiga aplicada. */
 function papeis() {
   return mapaEfetivo({
     papeisPorImpressora: store.get('papeisPorImpressora'),
@@ -31,7 +44,14 @@ function papeis() {
   });
 }
 
+// CRITICO - Mesma medida do `titleBarOverlay`: o Windows desenha os botoes de janela
+// dentro dela.
+const CABECALHO_H = 40;
+
 let janela = null;
+// CRITICO - A janela virou moldura: quem tem `webContents` de conteudo e a `siteView`.
+let siteView = null;
+let cabecalhoView = null;
 
 function criarJanela() {
   janela = new BrowserWindow({
@@ -39,30 +59,52 @@ function criarJanela() {
     height: 900,
     show: false,
     title: 'Gestor',
-    // Ícone da marca (o mesmo `brand_icon_url` que o gestor web usa). No app
-    // empacotado o `electron-builder` já assa o ícone no .exe; isto vale pra janela
-    // e pra barra de tarefas em desenvolvimento.
+    // Menu aparece no Alt.
+    autoHideMenuBar: true,
+    // Barra nativa fora (quem desenha e o `cabecalho.html`), mas o overlay mantem
+    // os botoes de janela NATIVOS por cima dela - sem reimplementar nada.
+    titleBarStyle: 'hidden',
+    // Cabecalho BRANCO: o overlay tem que casar com o fundo do `cabecalho.html`,
+    // senao os botoes de janela ficam numa ilha de cor. `symbolColor` escuro
+    // porque minimizar/fechar em branco sobre branco somem.
+    titleBarOverlay: { color: '#ffffff', symbolColor: '#1E293B', height: CABECALHO_H },
+    backgroundColor: '#ffffff',
     icon: path.join(__dirname, '..', 'build', 'icon.ico'),
+  });
+
+  cabecalhoView = new WebContentsView({
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      // Isolamento LIGADO: o site é conteúdo remoto e não pode tocar em Node.
+      preload: path.join(__dirname, 'cabecalho-preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
   });
+  cabecalhoView.webContents.loadFile(path.join(__dirname, 'cabecalho.html'));
+
+  siteView = new WebContentsView({
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      // Conteudo REMOTO: isolamento ligado, sem Node.
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  siteView.webContents.loadURL(store.get('url'));
+
+  janela.contentView.addChildView(cabecalhoView);
+  janela.contentView.addChildView(siteView);
+  posicionarViews();
+  janela.on('resize', posicionarViews);
 
   janela.maximize();
   janela.once('ready-to-show', () => janela.show());
-  janela.loadURL(store.get('url'));
+  // CRITICO - `WebContentsView` nao dispara `ready-to-show` na janela - sem isto ela nunca
+  // apareceria.
+  siteView.webContents.once('did-finish-load', () => janela.show());
 
-  // Link externo (WhatsApp, loja de app) abre no navegador do sistema, não numa
-  // janela do app sem barra de endereço.
-  //
-  // 🔴 `blob:` e `file:` NÃO vão pro `shell.openExternal` - ele só entende http(s) e
-  // devolveria erro em silêncio. O front usa a ponte `abrirPdf` dentro do app, mas
-  // qualquer `window.open` de blob que sobre precisa abrir AQUI, senão o clique não
-  // faz nada e parece que o sistema travou.
-  janela.webContents.setWindowOpenHandler(({ url }) => {
+  // CRITICO - `blob:`/`file:` NAO vao pro `shell.openExternal` (so http(s)) - abrem em
+  // janela propria, senao o clique nao faz nada.
+  siteView.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('blob:') || url.startsWith('file:')) {
       return { action: 'allow', overrideBrowserWindowOptions: janelaDeDocumento() };
     }
@@ -70,6 +112,19 @@ function criarJanela() {
 
     return { action: 'deny' };
   });
+}
+
+function posicionarViews() {
+  if (!janela || janela.isDestroyed()) return;
+  const { width, height } = janela.getContentBounds();
+  cabecalhoView.setBounds({ x: 0, y: 0, width, height: CABECALHO_H });
+  siteView.setBounds({ x: 0, y: CABECALHO_H, width, height: Math.max(0, height - CABECALHO_H) });
+}
+
+function avisarCabecalho(dados) {
+  if (cabecalhoView && !cabecalhoView.webContents.isDestroyed()) {
+    cabecalhoView.webContents.send('atualizacao', dados);
+  }
 }
 
 /** Opções da janela que exibe documento (PDF): visualizador do Chromium ligado. */
@@ -82,13 +137,8 @@ function janelaDeDocumento() {
   };
 }
 
-/**
- * ABRE um PDF numa janela do app, com o visualizador do Chromium (zoom, busca,
- * salvar e imprimir na própria barra).
- *
- * Existe pelo mesmo motivo da impressão: dentro do app não há aba de navegador pra
- * onde mandar o blob. O arquivo temporário é apagado quando a janela fecha.
- */
+// Dentro do app nao ha aba de navegador pra onde mandar o blob. O temporario e
+// apagado quando a janela fecha.
 async function abrirPdf(bytes, titulo) {
   const arquivo = path.join(os.tmpdir(), `gestor-doc-${Date.now()}.pdf`);
   fs.writeFileSync(arquivo, Buffer.from(bytes));
@@ -99,21 +149,9 @@ async function abrirPdf(bytes, titulo) {
   await visor.loadURL(`file://${arquivo}`);
 }
 
-/**
- * Imprime um PDF em silêncio.
- *
- * 🔴 O PDF vai pra um arquivo temporário e é carregado numa janela OCULTA: o
- * `print()` do Electron imprime o conteúdo de um `webContents`, e não aceita bytes
- * soltos. A janela fica `show:false` mas RENDERIZA (ao contrário do `display:none`
- * do navegador, que sairia em branco).
- *
- * `tipo` é o papel que o DOCUMENTO pede ('cupom' para recibo e orçamento, 'a4' para
- * relatório): a impressora sai do mapa local, não de uma escolha única. Sem isso, o
- * cupom de 80mm ia pra impressora padrão do Windows - quase sempre a laser.
- *
- * `deviceName` vazio = impressora padrão do Windows, que é o fallback quando
- * ninguém configurou nada ainda.
- */
+// CRITICO - Janela OCULTA e nao `display:none`: `print()` imprime um `webContents` e a
+// janela `show:false` RENDERIZA - documento nao renderizado sai em branco.
+// `tipo` escolhe a impressora no mapa local; vazio = padrao do Windows.
 async function imprimirPdf(bytes, tipo) {
   const arquivo = path.join(os.tmpdir(), `alfaclub-cupom-${Date.now()}.pdf`);
   fs.writeFileSync(arquivo, Buffer.from(bytes));
@@ -135,8 +173,7 @@ async function imprimirPdf(bytes, tipo) {
       );
     });
   } finally {
-    // Fecha a janela e apaga o temporário mesmo se a impressão falhar - senão cada
-    // recibo deixa um PDF no disco e uma janela viva.
+    // Mesmo se a impressao falhar: senao cada recibo deixa PDF no disco e janela viva.
     if (!oculta.isDestroyed()) oculta.destroy();
     fs.promises.unlink(arquivo).catch(() => {});
   }
@@ -146,7 +183,7 @@ ipcMain.handle('imprimir-pdf', (_evento, bytes, tipo) => imprimirPdf(bytes, tipo
 ipcMain.handle('abrir-pdf', (_evento, bytes, titulo) => abrirPdf(bytes, titulo));
 
 ipcMain.handle('listar-impressoras', async () => {
-  const lista = await janela.webContents.getPrintersAsync();
+  const lista = await siteView.webContents.getPrintersAsync();
 
   return {
     impressoras: lista.map((i) => ({ nome: i.name, descricao: i.displayName, padrao: i.isDefault })),
@@ -154,6 +191,32 @@ ipcMain.handle('listar-impressoras', async () => {
     tipos: TIPOS,
   };
 });
+
+ipcMain.handle('marca', () => marca);
+ipcMain.handle('versao', () => app.getVersion());
+
+// CRITICO - O gatilho e uma RELEASE no GitHub (`npm run publicar`), NAO um `git push`.
+// CRITICO - Isto atualiza a CASCA. O gestor web atualiza no deploy e so precisa de F5.
+// Baixa sozinho, instala NAO: o operador pode estar no meio de uma venda.
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+
+autoUpdater.on('update-available', (info) => avisarCabecalho({ estado: 'baixando', versao: info?.version, pct: 0 }));
+autoUpdater.on('download-progress', (p) => avisarCabecalho({ estado: 'baixando', pct: Math.round(p?.percent ?? 0) }));
+autoUpdater.on('update-downloaded', (info) => avisarCabecalho({ estado: 'pronta', versao: info?.version }));
+// Sem faixa: erro de checagem silenciosa nao vai pra cara do operador.
+autoUpdater.on('error', (e) => console.warn('[updater]', e?.message ?? e));
+
+// Fecha o app, roda o instalador NSIS e reabre sozinho.
+ipcMain.handle('instalar-atualizacao', () => {
+  setImmediate(() => autoUpdater.quitAndInstall());
+
+  return true;
+});
+ipcMain.handle('procurar-atualizacao', () => autoUpdater.checkForUpdates().catch(() => null));
+
+// O balcao fica dias com o app aberto - so checar na abertura atrasaria um dia.
+const INTERVALO_CHECAGEM_MS = 30 * 60 * 1000;
 
 ipcMain.handle('salvar-papeis', (_evento, mapa) => {
   store.set('papeisPorImpressora', sanitizar(mapa));
@@ -172,6 +235,7 @@ function abrirConfiguracao() {
     modal: true,
     title: 'Impressoras',
     autoHideMenuBar: true,
+    backgroundColor: '#ffffff',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true },
   });
   config.loadFile(path.join(__dirname, 'config.html'));
@@ -184,7 +248,8 @@ function montarMenu() {
       submenu: [
         { label: 'Impressoras...', click: abrirConfiguracao },
         { type: 'separator' },
-        { label: 'Recarregar', role: 'reload' },
+        // CRITICO - `role: 'reload'` age na view FOCADA - recarregaria o cabecalho.
+        { label: 'Recarregar', accelerator: 'F5', click: () => siteView?.webContents.reload() },
         { label: 'Sair', role: 'quit' },
       ],
     },
@@ -195,12 +260,13 @@ function montarMenu() {
           label: 'Sobre',
           click: () => dialog.showMessageBox(janela, {
             type: 'info',
-            title: 'Gestor',
-            message: `Gestor ${app.getVersion()}`,
-            detail: 'Impressão direta do cupom na impressora do balcão.',
+            title: 'Sobre',
+            message: 'AMA Tecnologia em Saúde',
+            detail: `Versão ${app.getVersion()}`,
           }),
         },
-        { label: 'Procurar atualizações', click: () => autoUpdater.checkForUpdatesAndNotify() },
+        // Nao `...AndNotify`: a notificacao nativa duplicaria a barra do cabecalho.
+        { label: 'Procurar atualizações', click: () => autoUpdater.checkForUpdates().catch(() => {}) },
       ],
     },
   ]));
@@ -209,10 +275,11 @@ function montarMenu() {
 app.whenReady().then(() => {
   montarMenu();
   criarJanela();
-  // Atualização silenciosa: baixa em segundo plano e instala ao fechar o app.
-  // `catch` vazio de propósito - balcão sem internet no momento da checagem não
-  // pode ver caixa de erro na cara do operador.
-  autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+
+  // `catch` vazio: balcao sem internet na hora da checagem nao pode ver erro.
+  const checar = () => autoUpdater.checkForUpdates().catch(() => {});
+  checar();
+  setInterval(checar, INTERVALO_CHECAGEM_MS);
 });
 
 app.on('window-all-closed', () => app.quit());

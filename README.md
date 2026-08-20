@@ -17,36 +17,83 @@ a presença dela:
 | app desktop | bytes → ponte → `webContents.print({silent:true})` | não |
 | Chrome comum | iframe + `window.print()` | sim |
 
-🔴 **Um código, dois destinos.** Nada é duplicado, e o site continua funcionando no
-navegador de quem não instalar o app.
-
 ## Rodar em desenvolvimento
 
 ```bash
 cd gestor_desktop
 npm install
 npm start
+npm run publicar
 cd gestor_desktop && npm run dist
 ```
+
+## Quando publicar (e quando NÃO)
+
+O app é uma janela que carrega o gestor web. Quase tudo que muda está **no site**.
+
+| Mexeu em | Precisa | Chega no balcão |
+|---|---|---|
+| `amaclub-client/`, `amaclub-api/` | deploy | F5 ou reabrir o app |
+| `gestor_desktop/src/` | `npm run publicar` | barra de atualização |
+
+Regra prática: se a mudança aparece abrindo `gestor.alfaclubsaude.com.br` no
+navegador, ela também aparece no app **sem publicar nada**.
 
 ## Gerar o instalador
 
 ```bash
-npm run dist        # gera dist/Gestor Setup X.Y.Z.exe, sem publicar
-npm run publicar    # gera E publica no GitHub Releases (auto-update)
+cd gestor_desktop
+
+# 1. SUBIR A VERSÃO no package.json (1.4.8 -> 1.4.9).
+#    O updater compara versões: publicar duas vezes o mesmo número não atualiza
+#    ninguém e NÃO dá erro - simplesmente nada acontece.
+
+# 2. ícone + cores da marca (assados no build)
+.\scripts\gerar-icone.ps1 -EstablishmentId N
+
+# 3a. só gerar, pra testar local
+npm run dist        # dist/Gestor Setup X.Y.Z.exe
+
+# 3b. gerar E publicar no GitHub Releases
+$env:GH_TOKEN = "ghp_..."
+npm run publicar
 ```
 
-Antes de publicar: `GH_TOKEN` no ambiente e `owner`/`repo` preenchidos no
-`electron-builder.yml` (hoje estão como `SEU_USUARIO_OU_ORG`).
+### GH_TOKEN
+
+Sem ele o build **completa** e só o upload falha:
+
+```
+Error: GitHub Personal Access Token is not set ... env "GH_TOKEN"
+```
+
+O instalador fica em `dist/` de qualquer jeito - dá pra instalar à mão.
+
+Crie em <https://github.com/settings/tokens> (classic) com escopo **`repo`**
+(ou só `public_repo` se o repositório do instalador for público).
+
+```powershell
+$env:GH_TOKEN = "ghp_..."     # só esta sessão do terminal
+setx GH_TOKEN "ghp_..."       # persiste; vale em terminais NOVOS
+```
+
+ATENCAO - o token publica release em nome da empresa. Nunca em arquivo do
+repositório (o `.gitignore` já bloqueia `.env`); vazou, revogue na mesma página.
 
 ## Auto-update
 
-`electron-updater` + GitHub Releases: o app checa ao abrir, baixa em segundo plano e
-aplica ao fechar. É o que dispensa reinstalar máquina por máquina a cada versão.
+`electron-updater` + GitHub Releases. O app checa ao abrir e a cada 30 min, baixa em
+segundo plano e mostra a barra no cabeçalho. **Não reinicia sozinho** - o operador
+pode estar no meio de uma venda; ele clica em "Reiniciar agora", ou a instalação
+acontece quando fechar o app.
 
-🔴 Release **privada** exige token também no cliente. Se o repositório do instalador
-não puder ser público, troque o `publish.provider` para `generic` apontando pra uma
-URL do próprio servidor.
+CRITICO - o gatilho é uma **RELEASE publicada**, não um `git push`. O updater lê o
+`latest.yml` que o electron-builder sobe junto do instalador; commit sem release não
+atualiza ninguém.
+
+CRITICO - release **privada** exige token também no cliente. Se o repositório do
+instalador não puder ser público, troque o `publish.provider` para `generic`
+apontando pra uma URL do próprio servidor.
 
 ## Ícone
 

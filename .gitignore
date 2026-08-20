@@ -13,12 +13,19 @@ dist/
 # ate alguem lembrar de regerar. Build sem ele nao falha: o electron-builder cai
 # no icone padrao do Electron e avisa.
 build/*.ico
+# Cores da marca, geradas pelo mesmo script do icone e pelo mesmo motivo: mudam
+# por estabelecimento. Ausente, o app usa os defaults da casa.
+build/marca.json
 
 # Publicacao no GitHub Releases (`npm run publicar`) le GH_TOKEN do ambiente.
 # Token de release publica instalador em nome da empresa - NUNCA versionar.
 .env
 .env.*
 !.env.example
+# CRITICO - O `electron-builder` NAO le `.env`: o CLI carrega
+# `electron-builder.env` do diretorio corrente (`electron-builder/out/cli/cli.js`).
+# O nome NAO casa com os padroes acima - sem esta linha o token entra no commit.
+electron-builder.env
 
 # Certificado de assinatura de codigo (o EV que tira o aviso do SmartScreen,
 # quando houver) - NUNCA versionar.

@@ -16,9 +16,11 @@
   select { width: 100%; height: 30px; font-size: 13px; padding: 0 4px; }
   .rodape { margin-top: 20px; display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
   button { height: 34px; padding: 0 16px; font-size: 14px; cursor: pointer; border: 1px solid #ccc; background: #f5f5f5; }
-  button.ok { background: #219790; border-color: #219790; color: #fff; font-weight: 700; }
+  /* A cor vem da MARCA (var setada no carregar()); o verde é só o fallback de
+     quando o build não rodou o gerar-icone.ps1. */
+  button.ok { background: var(--marca, #219790); border-color: var(--marca, #219790); color: #fff; font-weight: 700; }
+  h1 { color: var(--marca, #231F20); }
   .aviso { margin-top: 14px; font-size: 12px; background: #FEF3C7; border: 1px solid #FDE68A; padding: 8px; line-height: 1.4; }
-  .salvo { font-size: 12px; color: #219790; font-weight: 700; margin-right: auto; }
   .vazio { font-size: 13px; color: #666; padding: 16px 0; }
 </style>
 </head>
@@ -45,7 +47,6 @@
   </div>
 
   <div class="rodape">
-    <span id="salvo" class="salvo"></span>
     <button onclick="window.close()">Fechar</button>
     <button class="ok" id="salvar">Salvar</button>
   </div>
@@ -53,7 +54,15 @@
 <script>
   const ROTULOS = { cupom: 'Cupom (bobina)', a4: 'A4 (folha)' };
   const linhas = document.getElementById('linhas');
-  const salvo = document.getElementById('salvo');
+
+  async function vestirMarca() {
+    // Best-effort: sem marca assada no build, o CSS fica no fallback e a tela
+    // funciona igual. Config de impressora não pode falhar por causa de cor.
+    try {
+      const { primaria } = await window.alfaclubDesktop.marca();
+      if (primaria) document.documentElement.style.setProperty('--marca', primaria);
+    } catch { /* fallback do CSS */ }
+  }
 
   async function carregar() {
     const { impressoras, papeis, tipos } = await window.alfaclubDesktop.listarImpressoras();
@@ -94,10 +103,12 @@
       if (s.value) mapa[s.dataset.impressora] = s.value;
     });
     await window.alfaclubDesktop.salvarPapeis(mapa);
-    salvo.textContent = 'Salvo.';
-    setTimeout(() => { salvo.textContent = ''; }, 2500);
+    // Fecha DEPOIS do await: fechar antes mataria a janela com o IPC no meio do
+    // caminho e a escolha do operador nao chegaria ao disco.
+    window.close();
   });
 
+  vestirMarca();
   carregar();
 </script>
 </body>

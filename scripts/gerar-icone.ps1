@@ -8,7 +8,7 @@
 #    .\gerar-icone.ps1 -EstablishmentId 2      # icone do estabelecimento 2
 #    .\gerar-icone.ps1                          # icone GLOBAL (cai no Estab. Clube)
 #
-#  🔴 Por padrao o branding global carrega a marca do Estab. CLUBE. Para o icone do
+# CRITICO - Por padrao o branding global carrega a marca do Estab. CLUBE. Para o icone do
 #  balcao normalmente se quer o estabelecimento PRINCIPAL (a clinica que atende), e
 #  nao o clube - por isso o `-EstablishmentId`.
 # =============================================================================
@@ -72,4 +72,21 @@ Remove-Item $png -ErrorAction SilentlyContinue
 
 $ico = Get-Item (Join-Path $dir 'icon.ico')
 Write-Host "icon.ico gerado: $($ico.Length) bytes, $($imagens.Count) resolucoes" -ForegroundColor Green
+
+# CORES DA MARCA, assadas junto do icone (19-08).
+#
+# O app carrega um site REMOTO e nao conhece a identidade visual: o `main.js` roda
+# antes de qualquer request. Buscar a marca no boot atrasaria a janela e quebraria
+# o app offline. Como o icone ja e assado no build, a cor vem no mesmo pacote.
+#
+# Sem este arquivo o `main.js` cai nos defaults da casa - ele nunca depende daqui.
+$marca = @{
+    nome     = $d.brand_name
+    primaria = $d.brand_primary_hex
+    acento   = $d.brand_accent_hex
+} | ConvertTo-Json
+# UTF8 SEM BOM: o `JSON.parse` do Node engasga com o BOM que o Out-File cravaria.
+[System.IO.File]::WriteAllText((Join-Path $dir 'marca.json'), $marca, (New-Object System.Text.UTF8Encoding($false)))
+Write-Host "marca.json gerado: $($d.brand_primary_hex) / $($d.brand_accent_hex)" -ForegroundColor Green
+
 Write-Host 'Rode `npm run dist` para o icone entrar no instalador.' -ForegroundColor Yellow
