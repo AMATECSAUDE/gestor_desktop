@@ -1,0 +1,20 @@
+# Fim de linha normalizado no repositorio.
+#
+# Sem isto o git avisa "LF will be replaced by CRLF" a cada `git add` no Windows e,
+# pior, um mesmo arquivo salvo em duas maquinas aparece como reescrito INTEIRO no
+# diff - o que esconde a mudanca de uma linha no meio de centenas.
+#
+# `text=auto` guarda LF no repositorio e entrega o fim de linha nativo na copia de
+# trabalho.
+* text=auto
+
+# Arquivos que sao SEMPRE LF, mesmo no Windows: shell nao roda com CRLF.
+*.sh text eol=lf
+
+# Binarios - nunca normalizar (CRLF dentro de um .ico ou .exe corrompe o arquivo).
+*.ico binary
+*.png binary
+*.jpg binary
+*.exe binary
+*.dll binary
+*.node binary

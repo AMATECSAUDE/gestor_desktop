@@ -1,7 +1,7 @@
 {
   "name": "gestor-desktop",
   "productName": "Gestor",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "description": "Gestor no desktop, com impressao direta do cupom na impressora do balcao",
   "main": "src/main.js",
   "author": "AMATEC Tecnologia em Saude LTDA",

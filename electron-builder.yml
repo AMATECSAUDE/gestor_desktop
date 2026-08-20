@@ -39,5 +39,10 @@ nsis:
 # publico OU trocar o provider por um servidor proprio (generic).
 publish:
   provider: github
-  owner: SEU_USUARIO_OU_ORG
-  repo: alfaclub-gestor-desktop
+  # 🔴 `owner` era o placeholder SEU_USUARIO_OU_ORG e `repo` apontava pra
+  # `alfaclub-gestor-desktop`, que NAO existe - o repo real e `gestor_desktop`
+  # (ver .git/config). Com isso o `npm run publicar` erra o destino e o
+  # autoUpdater consulta releases de um repositorio inexistente: o app nunca
+  # encontra atualizacao e nao reclama de nada.
+  owner: AMATECSAUDE
+  repo: gestor_desktop
