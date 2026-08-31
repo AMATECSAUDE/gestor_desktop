@@ -68,6 +68,7 @@ if (require.main === module) {
     mapaEfetivo({ impressora: 'Elgin i9', papeisPorImpressora: { HP: 'cupom' } }),
     { HP: 'cupom' },
   );
+
   assert.deepStrictEqual(mapaEfetivo({ impressora: '' }), {});
 
   assert.deepStrictEqual(sanitizar({ HP: 'a4', X: 'fax', '': 'cupom' }), { HP: 'a4' });

@@ -47,6 +47,9 @@ cd gestor_desktop
 # 1. SUBIR A VERSÃO no package.json (1.4.8 -> 1.4.9).
 #    O updater compara versões: publicar duas vezes o mesmo número não atualiza
 #    ninguém e NÃO dá erro - simplesmente nada acontece.
+#
+#    NUMERAÇÃO (regra do Antony): anda no ÚLTIMO dígito até o 9, e só então sobe o
+#    do meio. 1.5.8 -> 1.5.9 -> 1.6.0. Nunca pular do 1.5.3 direto pro 1.6.0.
 
 # 2. ícone + cores da marca (assados no build)
 .\scripts\gerar-icone.ps1 -EstablishmentId N

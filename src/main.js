@@ -10,6 +10,7 @@ const os = require('node:os');
 // e cai no caminho do navegador quando ela nao existe.
 
 const { TIPOS, escolherImpressora, mapaEfetivo, sanitizar } = require('./papel');
+const { print: imprimirArquivo } = require('pdf-to-printer');
 
 // Cores assadas no build pelo `gerar-icone.ps1`. Buscar no boot atrasaria a janela
 // e quebraria offline. Sem o arquivo, cai nestes defaults.
@@ -91,6 +92,9 @@ function criarJanela() {
   });
   siteView.webContents.loadURL(store.get('url'));
 
+  abrirMenuNoAlt(cabecalhoView.webContents);
+  abrirMenuNoAlt(siteView.webContents);
+
   janela.contentView.addChildView(cabecalhoView);
   janela.contentView.addChildView(siteView);
   posicionarViews();
@@ -152,29 +156,79 @@ async function abrirPdf(bytes, titulo) {
 // CRITICO - Janela OCULTA e nao `display:none`: `print()` imprime um `webContents` e a
 // janela `show:false` RENDERIZA - documento nao renderizado sai em branco.
 // `tipo` escolhe a impressora no mapa local; vazio = padrao do Windows.
+const TEMPO_LIMITE_IMPRESSAO_MS = 20000;
+
+// `__dirname` empacotado aponta pra dentro do `app.asar`; o `asarUnpack` do
+// electron-builder poe o .exe no irmao `app.asar.unpacked`. Fora do pacote o
+// `replace` nao acha nada e o caminho fica igual - mesma linha serve aos dois.
+const CAMINHO_SUMATRA = path
+  .join(__dirname, '..', 'node_modules', 'pdf-to-printer', 'dist', 'SumatraPDF-3.4.6-32.exe')
+  .replace('app.asar', 'app.asar.unpacked');
+
+// CRITICO - NAO da pra imprimir PDF por `BrowserWindow` + `webContents.print()`.
+// O Chromium abre o PDF no VISUALIZADOR (barra escura, fundo cinza, pagina reduzida
+// no meio) e o que vai pro papel e a TELA DELE: tarja preta na folha inteira,
+// conteudo fora do topo e desbotado. Medido em 20-08 com captura da janela oculta.
+// Antes disso ele nem imprimia: sem `pageSize` explicito o Chromium pergunta o
+// tamanho da pagina ao driver, a termica nao responde ("page size is empty"), ele
+// invalida as configuracoes e ABORTA SEM CHAMAR O CALLBACK - front travado pra
+// sempre. Passar o `pageSize` destravou, mas so trocou o travamento pela tarja.
+//
+// O `pdf-to-printer` embute o SumatraPDF e imprime o DOCUMENTO. Medido: 793ms.
+// O binario precisa de `asarUnpack` no electron-builder - dentro do asar nao executa.
 async function imprimirPdf(bytes, tipo) {
   const arquivo = path.join(os.tmpdir(), `alfaclub-cupom-${Date.now()}.pdf`);
   fs.writeFileSync(arquivo, Buffer.from(bytes));
 
-  const oculta = new BrowserWindow({ show: false, webPreferences: { plugins: true } });
+  // Sem impressora classificada pro tipo, `printer` fica fora e o SumatraPDF usa a
+  // padrao do Windows - mesmo fallback silencioso de antes.
+  const impressora = escolherImpressora(papeis(), tipo || 'cupom');
+  const opcoes = {
+    // CRITICO - `noscale`. O padrao do SumatraPDF e `shrink`: ele ENCOLHE a pagina pra
+    // caber na area imprimivel e CENTRALIZA o resto. Na bobina isso dava as duas
+    // reclamacoes de 20-08 de uma vez - o cupom saia com ~35mm de papel em branco no
+    // topo, e o texto de 8,5px, ja pequeno, encolhia mais e virava cinza fino
+    // (o QR saia preto solido porque e imagem: e a prova de que nao era densidade
+    // da termica).
+    scale: 'noscale',
+    // Termica nao tem cinza: ela simula com pontinhos espacados, e letra fina
+    // simulada some. Preto e branco puro faz a letra sair solida.
+    monochrome: true,
+    // CRITICO - caminho do binario EXPLICITO. O `pdf-to-printer` reescreve
+    // `app.asar` -> `app.asar.unpacked` sozinho, mas so quando `process.mainModule`
+    // existe - e no Electron 34 ele e UNDEFINED (medido em 20-08). Sem isto o app
+    // instalado procura o SumatraPDF DENTRO do asar, de onde o Windows nao executa:
+    // nao imprime e so falha no pacote, nunca em `npm start` nem em script solto.
+    sumatraPdfPath: CAMINHO_SUMATRA,
+    ...(impressora ? { printer: impressora } : {}),
+  };
+
+  // CRITICO - o erro TEM que dizer o que faltou. A falha de impressao acontece na
+  // maquina do cliente, sem console aberto e sem quem saiba abrir: mensagem generica
+  // vira uma ida ate o balcao. Cada ramo abaixo nomeia uma causa distinta.
+  if (!fs.existsSync(CAMINHO_SUMATRA)) {
+    throw new Error(`Componente de impressao ausente (${CAMINHO_SUMATRA}). Reinstale o Gestor.`);
+  }
 
   try {
-    await oculta.loadURL(`file://${arquivo}`);
+    // Rede de seguranca: processo externo que nao volta nao pode prender o balcao.
+    await Promise.race([
+      imprimirArquivo(arquivo, opcoes),
+      new Promise((_, rejeitar) => setTimeout(
+        () => rejeitar(new Error(`A impressora nao respondeu em ${TEMPO_LIMITE_IMPRESSAO_MS / 1000}s (${impressora || 'padrao do Windows'}). Confira se esta ligada.`)),
+        TEMPO_LIMITE_IMPRESSAO_MS,
+      )),
+    ]);
+  } catch (erro) {
+    // `execFile` devolve "Command failed" pelado; o motivo real vem no stderr.
+    const detalhe = [erro?.stderr, erro?.message].filter(Boolean).join(' | ').trim();
+    console.warn('[impressao]', { impressora: impressora || '(padrao do Windows)', detalhe });
 
-    await new Promise((resolve, reject) => {
-      oculta.webContents.print(
-        {
-          silent: true,
-          printBackground: true,
-          deviceName: escolherImpressora(papeis(), tipo || 'cupom') || undefined,
-          margins: { marginType: 'none' },
-        },
-        (ok, motivo) => (ok ? resolve() : reject(new Error(motivo || 'impressão cancelada'))),
-      );
-    });
+    throw new Error(
+      `Falha ao imprimir em "${impressora || 'impressora padrao do Windows'}". ${detalhe || 'Sem detalhe do sistema.'}`
+      + (impressora ? '' : ' Nenhuma impressora foi classificada em Arquivo > Impressoras.'),
+    );
   } finally {
-    // Mesmo se a impressao falhar: senao cada recibo deixa PDF no disco e janela viva.
-    if (!oculta.isDestroyed()) oculta.destroy();
     fs.promises.unlink(arquivo).catch(() => {});
   }
 }
@@ -239,6 +293,23 @@ function abrirConfiguracao() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true },
   });
   config.loadFile(path.join(__dirname, 'config.html'));
+}
+
+// CRITICO - Com `titleBarStyle: 'hidden'` o Windows nao desenha a barra de menu: ela
+// cairia dentro da area de conteudo, que as duas `WebContentsView` cobrem. O Alt
+// continua chegando ao webContents, entao ele abre o MESMO menu como popup - e por
+// onde o operador acha `Arquivo > Impressoras...`.
+// `soAlt` existe para o Alt de atalho (Alt+Left, Alt+F4) nao abrir o menu ao soltar.
+function abrirMenuNoAlt(wc) {
+  let soAlt = false;
+
+  wc.on('before-input-event', (_evento, entrada) => {
+    if (entrada.type === 'keyDown') return void (soAlt = entrada.key === 'Alt');
+    if (entrada.type !== 'keyUp' || entrada.key !== 'Alt' || !soAlt) return;
+
+    soAlt = false;
+    Menu.getApplicationMenu()?.popup({ window: janela, x: 8, y: CABECALHO_H });
+  });
 }
 
 function montarMenu() {

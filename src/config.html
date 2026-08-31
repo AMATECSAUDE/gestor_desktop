@@ -20,7 +20,6 @@
      quando o build não rodou o gerar-icone.ps1. */
   button.ok { background: var(--marca, #219790); border-color: var(--marca, #219790); color: #fff; font-weight: 700; }
   h1 { color: var(--marca, #231F20); }
-  .aviso { margin-top: 14px; font-size: 12px; background: #FEF3C7; border: 1px solid #FDE68A; padding: 8px; line-height: 1.4; }
   .vazio { font-size: 13px; color: #666; padding: 16px 0; }
 </style>
 </head>
@@ -39,12 +38,6 @@
     <tbody id="linhas"></tbody>
   </table>
   <div class="vazio" id="vazio" hidden>Nenhuma impressora encontrada neste computador.</div>
-
-  <div class="aviso">
-    Confira nas Preferências da impressora se o papel dela bate com o que você marcou
-    aqui. Muita Elgin vem de fábrica em 58mm e corta o cupom de 80mm.
-    As medidas de cada tipo ficam no Gestor, em <strong>Cadastros Gerais &gt; Impressão</strong>.
-  </div>
 
   <div class="rodape">
     <button onclick="window.close()">Fechar</button>

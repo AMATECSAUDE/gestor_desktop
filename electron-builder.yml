@@ -16,6 +16,14 @@ files:
   # le ele - sem esta linha o app instalado nao acha o arquivo e cai nas cores
   # padrao, funcionando em `npm start` e falhando calado no instalador.
   - build/marca.json
+  - node_modules/pdf-to-printer/**/*
+
+# CRITICO - O SumatraPDF e um .exe: dentro do `app.asar` ele NAO executa (o asar e um
+# arquivo unico, o Windows nao consegue rodar nada de dentro dele). `asarUnpack`
+# coloca a pasta em `app.asar.unpacked/`, de onde o `pdf-to-printer` acha o binario.
+# Sem esta linha o app instala, abre e so falha NA HORA DE IMPRIMIR.
+asarUnpack:
+  - node_modules/pdf-to-printer/dist/*.exe
 
 win:
   target:
